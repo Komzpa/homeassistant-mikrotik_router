@@ -117,11 +117,8 @@ class MikrotikAPI:
 
         login_method = self._login_method
         if isinstance(login_method, str):
-            login_method = {
-                "plain": librouteros.login.plain,
-                "token": librouteros.login.token,
-            }.get(login_method)
-            if login_method is None:
+            login_method = getattr(librouteros.login, login_method, None)
+            if not callable(login_method):
                 _LOGGER.error(
                     "Mikrotik %s unsupported login method: %s",
                     self._host,
@@ -129,6 +126,14 @@ class MikrotikAPI:
                 )
                 self.error = "cannot_connect"
                 return False
+        elif not callable(login_method):
+            _LOGGER.error(
+                "Mikrotik %s unsupported login method: %s",
+                self._host,
+                self._login_method,
+            )
+            self.error = "cannot_connect"
+            return False
 
         kwargs = {
             "encoding": self._encoding,
