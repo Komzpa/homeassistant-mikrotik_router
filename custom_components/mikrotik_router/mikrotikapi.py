@@ -1,5 +1,6 @@
 """Mikrotik API for Mikrotik Router."""
 
+import inspect
 import logging
 import ssl
 from time import time
@@ -115,18 +116,8 @@ class MikrotikAPI:
         self._connected = False
         self._connection_epoch = time()
 
-        login_method = self._login_method
-        if isinstance(login_method, str):
-            login_method = getattr(librouteros.login, login_method, None)
-            if not callable(login_method):
-                _LOGGER.error(
-                    "Mikrotik %s unsupported login method: %s",
-                    self._host,
-                    self._login_method,
-                )
-                self.error = "cannot_connect"
-                return False
-        elif not callable(login_method):
+        login_method = self._get_login_method(self._login_method)
+        if login_method is None:
             _LOGGER.error(
                 "Mikrotik %s unsupported login method: %s",
                 self._host,
@@ -137,9 +128,12 @@ class MikrotikAPI:
 
         kwargs = {
             "encoding": self._encoding,
-            "login_method": login_method,
             "port": self._port,
         }
+        if self._use_current_login_method_api():
+            kwargs["login_method"] = login_method
+        else:
+            kwargs["login_methods"] = self._login_method
 
         self.lock.acquire()
         try:
@@ -178,6 +172,39 @@ class MikrotikAPI:
             self.lock.release()
 
         return self._connected
+
+    @staticmethod
+    def _get_login_method(login_method):
+        """Return a librouteros login callable for supported login methods."""
+        if callable(login_method):
+            return login_method
+
+        if not isinstance(login_method, str):
+            return None
+
+        login_module = getattr(librouteros, "login", None)
+        if login_module is None:
+            return None
+
+        supported_login_methods = {
+            "plain": getattr(login_module, "plain", None),
+            "token": getattr(login_module, "token", None),
+        }
+        method = supported_login_methods.get(login_method)
+        if callable(method):
+            return method
+
+        return None
+
+    @staticmethod
+    def _use_current_login_method_api() -> bool:
+        """Return if librouteros.connect expects login_method callables."""
+        try:
+            parameters = inspect.signature(librouteros.connect).parameters
+        except (TypeError, ValueError):
+            return True
+
+        return "login_method" in parameters or "login_methods" not in parameters
 
     # ---------------------------
     #   error_to_strings
