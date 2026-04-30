@@ -130,10 +130,8 @@ class MikrotikAPI:
             "encoding": self._encoding,
             "port": self._port,
         }
-        if self._use_current_login_method_api():
+        if self._supports_login_method_kwarg():
             kwargs["login_method"] = login_method
-        else:
-            kwargs["login_methods"] = self._login_method
 
         self.lock.acquire()
         try:
@@ -197,14 +195,17 @@ class MikrotikAPI:
         return None
 
     @staticmethod
-    def _use_current_login_method_api() -> bool:
-        """Return if librouteros.connect expects login_method callables."""
+    def _supports_login_method_kwarg() -> bool:
+        """Return if librouteros.connect accepts a login_method kwarg."""
         try:
             parameters = inspect.signature(librouteros.connect).parameters
         except (TypeError, ValueError):
             return True
 
-        return "login_method" in parameters or "login_methods" not in parameters
+        return "login_method" in parameters or any(
+            parameter.kind == inspect.Parameter.VAR_KEYWORD
+            for parameter in parameters.values()
+        )
 
     # ---------------------------
     #   error_to_strings
